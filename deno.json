@@ -1,0 +1,12 @@
+{
+  "tasks": {
+    "dev": "deno run --watch main.ts"
+  },
+  "imports": {
+    "@std/dotenv": "jsr:@std/dotenv@^0.225.2",
+    "@std/fs": "jsr:@std/fs@^1.0.5",
+    "@stellar/stellar-sdk": "npm:@stellar/stellar-sdk@^12.3.0",
+    "js-sha3": "npm:js-sha3@^0.9.3",
+    "rxjs": "npm:rxjs@^7.8.1"
+  }
+}
