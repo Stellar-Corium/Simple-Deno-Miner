@@ -79,11 +79,7 @@ combineLatest([state$, reset$]).subscribe({
           worker.terminate();
 
           if (response.type === "DONE") {
-            console.log(
-              `Start building tx for values block: ${
-                coreData.state.current + 1n
-              } with hash: ${response.payload.hash} and nonce: ${response.payload.nonce}`,
-            );
+            console.log({ response });
             submit$.next({ ...response.payload, message });
             reset$.next();
           }
@@ -96,33 +92,39 @@ combineLatest([state$, reset$]).subscribe({
   },
 });
 
+console.log('Transactions will be sent if block was found:', submitTxs);
 submit$.asObservable()
   .pipe(filter(() => submitTxs))
   .subscribe({
     next: async (payload: { hash: string; nonce: number; message: string }) => {
-      const source = await rpc.getAccount(keypair.publicKey());
-      const tx = new TransactionBuilder(source, {
-        networkPassphrase: Networks.PUBLIC,
-        fee: "10000000",
-      }).setTimeout(0).addOperation(
-        contract.call(
-          "mine",
-          xdr.ScVal.scvBytes(Buffer.from(payload.hash, "hex")),
-          xdr.ScVal.scvString(payload.message),
-          nativeToScVal(payload.nonce, { type: "u64" }),
-          new Address(keypair.publicKey()).toScVal(),
-        ),
-      ).build();
+      console.log('Start building tx');
+      try {
+        const source = await rpc.getAccount(keypair.publicKey());
+        const tx = new TransactionBuilder(source, {
+          networkPassphrase: Networks.PUBLIC,
+          fee: "10000000",
+        }).setTimeout(0).addOperation(
+          contract.call(
+            "mine",
+            xdr.ScVal.scvBytes(Buffer.from(payload.hash, "hex")),
+            xdr.ScVal.scvString(payload.message),
+            nativeToScVal(payload.nonce, { type: "u64" }),
+            new Address(keypair.publicKey()).toScVal(),
+          ),
+        ).build();
 
-      const sim = await rpc.simulateTransaction(tx);
+        const sim = await rpc.simulateTransaction(tx);
 
-      if (SorobanRpc.Api.isSimulationError(sim)) {
-        console.error(sim.error);
-        return;
+        if (SorobanRpc.Api.isSimulationError(sim)) {
+          console.log('Error:', sim.error);
+          return;
+        }
+        const newTx = SorobanRpc.assembleTransaction(tx, sim).build();
+        newTx.sign(keypair);
+        console.log(`Sending tx`);
+        await rpc.sendTransaction(newTx);
+      } catch (e) {
+        console.log('Error:', e);
       }
-      const newTx = SorobanRpc.assembleTransaction(tx, sim).build();
-      newTx.sign(keypair);
-      console.log(`Sending tx`);
-      rpc.sendTransaction(newTx);
     },
   });
