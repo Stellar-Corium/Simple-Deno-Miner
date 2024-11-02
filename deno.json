@@ -1,6 +1,9 @@
 {
   "tasks": {
-    "dev": "deno run --watch main.ts"
+    "start": "deno run --allow-net --allow-read --allow-env --allow-ffi main.ts",
+    "build": "wasm-pack build --target deno --out-dir ../pkg ./wasm-miner/",
+    "benchmark": "deno run --allow-env --allow-read --allow-ffi test.ts",
+    "format": "deno fmt consts.ts main.ts test.ts types.ts utils.ts worker.ts"
   },
   "imports": {
     "@std/dotenv": "jsr:@std/dotenv@^0.225.2",

@@ -14,6 +14,7 @@ import {
   Observable,
   Subject,
   switchMap,
+  take,
   timer,
 } from "rxjs";
 import { Worker } from "node:worker_threads";
@@ -21,19 +22,12 @@ import { Buffer } from "node:buffer";
 
 import { fetchCurrentState } from "./utils.ts";
 import type { Block, State, SubmitParams } from "./types.ts";
-import {
-  contract,
-  cpuCores,
-  hashPerWorker,
-  keypair,
-  rpc,
-  submitTxs,
-} from "./consts.ts";
+import { contract, keypair, rpc, submitTxs, totalWorkers } from "./env.ts";
 
 const submit$: Subject<SubmitParams> = new Subject<SubmitParams>();
 const reset$: BehaviorSubject<void> = new BehaviorSubject<void>(undefined);
 
-const state$: Observable<{ block: Block; state: State }> = timer(0, 7000)
+const state$: Observable<{ block: Block; state: State }> = timer(0, 3000)
   .pipe(
     switchMap(() => fetchCurrentState({ contract, rpc })),
     distinctUntilChanged((
@@ -52,12 +46,12 @@ combineLatest([state$, reset$]).subscribe({
       } with difficulty ${coreData.state.difficulty}`,
     );
     workers.forEach((w) => w.terminate());
-    workers = Array.from({ length: cpuCores }).map(() =>
+    workers = Array.from({ length: totalWorkers }).map(() =>
       new Worker("./worker.ts")
     );
     const tick: number = performance.now();
     await Promise.all(workers.map((worker) => {
-      const message = "" + worker.threadId;
+      const message = "DenoMiner-" + worker.threadId;
 
       return new Promise((r) => {
         worker.postMessage({
@@ -67,7 +61,6 @@ combineLatest([state$, reset$]).subscribe({
           prev_hash: xdr.ScVal.scvBytes(coreData.block.hash).toXDR(),
           miner: new Address(keypair.publicKey()).toScVal().toXDR(),
           difficulty: coreData.state.difficulty,
-          times: hashPerWorker,
         });
 
         worker.on(
@@ -79,7 +72,7 @@ combineLatest([state$, reset$]).subscribe({
           worker.terminate();
 
           if (response.type === "DONE") {
-            console.log({ response });
+            console.log({ response, message });
             submit$.next({ ...response.payload, message });
             reset$.next();
           }
@@ -92,16 +85,17 @@ combineLatest([state$, reset$]).subscribe({
   },
 });
 
-console.log('Transactions will be sent if block was found:', submitTxs);
+console.log("Miner:", keypair.publicKey());
+console.log("Transactions will be sent if block was found:", submitTxs);
 submit$.asObservable()
-  .pipe(filter(() => submitTxs))
+  .pipe(filter(() => submitTxs), take(1))
   .subscribe({
     next: async (payload: { hash: string; nonce: number; message: string }) => {
-      console.log('Start building tx');
+      console.log("Start building tx");
       try {
         const source = await rpc.getAccount(keypair.publicKey());
         const tx = new TransactionBuilder(source, {
-          networkPassphrase: Networks.PUBLIC,
+          networkPassphrase: Networks.TESTNET,
           fee: "10000000",
         }).setTimeout(0).addOperation(
           contract.call(
@@ -116,15 +110,16 @@ submit$.asObservable()
         const sim = await rpc.simulateTransaction(tx);
 
         if (SorobanRpc.Api.isSimulationError(sim)) {
-          console.log('Error:', sim.error);
+          console.log("Error:", sim.error);
           return;
         }
         const newTx = SorobanRpc.assembleTransaction(tx, sim).build();
         newTx.sign(keypair);
         console.log(`Sending tx`);
-        await rpc.sendTransaction(newTx);
+        const submit = await rpc.sendTransaction(newTx);
+        console.log(`Tx sent`, submit);
       } catch (e) {
-        console.log('Error:', e);
+        console.log("Error:", e);
       }
     },
   });

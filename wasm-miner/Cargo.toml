@@ -1,0 +1,12 @@
+[package]
+name = "fcm-wasm-miner"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2.95"
+hex = "0.4.3"
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
