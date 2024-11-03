@@ -1,11 +1,4 @@
-import {
-  Address,
-  nativeToScVal,
-  Networks,
-  SorobanRpc,
-  TransactionBuilder,
-  xdr,
-} from "@stellar/stellar-sdk";
+import { Address, nativeToScVal, Networks, SorobanRpc, TransactionBuilder, xdr, } from "@stellar/stellar-sdk";
 import {
   BehaviorSubject,
   combineLatest,
@@ -19,6 +12,7 @@ import {
 } from "rxjs";
 import { Worker } from "node:worker_threads";
 import { Buffer } from "node:buffer";
+import { randomBytes } from 'node:crypto';
 
 import { fetchCurrentState } from "./utils.ts";
 import type { Block, State, SubmitParams } from "./types.ts";
@@ -51,7 +45,7 @@ combineLatest([state$, reset$]).subscribe({
     );
     const tick: number = performance.now();
     await Promise.all(workers.map((worker) => {
-      const message = "DenoMiner-" + worker.threadId;
+      const message = "DenoMiner-" + randomBytes(8).toString("hex");
 
       return new Promise((r) => {
         worker.postMessage({
@@ -95,7 +89,7 @@ submit$.asObservable()
       try {
         const source = await rpc.getAccount(keypair.publicKey());
         const tx = new TransactionBuilder(source, {
-          networkPassphrase: Networks.TESTNET,
+          networkPassphrase: Networks.PUBLIC,
           fee: "10000000",
         }).setTimeout(0).addOperation(
           contract.call(
